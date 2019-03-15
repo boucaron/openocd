@@ -20,6 +20,9 @@
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
  *   GNU General Public License for more details.                          *
+ *                                                                         *
+ *   You should have received a copy of the GNU General Public License     *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -1493,7 +1496,8 @@ static int numicro_erase(struct flash_bank *bank, int first, int last)
 		return retval;
 
 	for (i = first; i <= last; i++) {
-		LOG_DEBUG("erasing sector %d at address 0x%" PRIx32 "", i, bank->base + bank->sectors[i].offset);
+		LOG_DEBUG("erasing sector %d at address " TARGET_ADDR_FMT, i,
+				bank->base + bank->sectors[i].offset);
 		retval = target_write_u32(target, NUMICRO_FLASH_ISPADR, bank->base + bank->sectors[i].offset);
 		if (retval != ERROR_OK)
 			return retval;
@@ -1675,7 +1679,8 @@ static int numicro_get_flash_size(struct flash_bank *bank, const struct numicro_
 	for (size_t i = 0; i < cpu->n_banks; i++) {
 		if (bank->base == cpu->bank[i].base) {
 			*flash_size = cpu->bank[i].size;
-			LOG_INFO("bank base = 0x%08" PRIx32 ", size = 0x%08" PRIx32 "", bank->base, *flash_size);
+			LOG_INFO("bank base = " TARGET_ADDR_FMT ", size = 0x%08"
+					PRIx32, bank->base, *flash_size);
 			return ERROR_OK;
 		}
 	}
@@ -1877,4 +1882,5 @@ struct flash_driver numicro_flash = {
 	.auto_probe = numicro_auto_probe,
 	.erase_check = default_flash_blank_check,
 	.protect_check = numicro_protect_check,
+	.free_driver_priv = default_flash_free_driver_priv,
 };

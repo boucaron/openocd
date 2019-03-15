@@ -23,9 +23,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -36,13 +34,14 @@
 #include "commands.h"
 
 struct cmd_queue_page {
+	struct cmd_queue_page *next;
 	void *address;
 	size_t used;
-	struct cmd_queue_page *next;
 };
 
 #define CMD_QUEUE_PAGE_SIZE (1024 * 1024)
 static struct cmd_queue_page *cmd_queue_pages;
+static struct cmd_queue_page *cmd_queue_pages_tail;
 
 struct jtag_command *jtag_command_queue;
 static struct jtag_command **next_command_pointer = &jtag_command_queue;
@@ -100,8 +99,7 @@ void *cmd_queue_alloc(size_t size)
 	/* Done... */
 
 	if (*p_page) {
-		while ((*p_page)->next)
-			p_page = &((*p_page)->next);
+		p_page = &cmd_queue_pages_tail;
 		if (CMD_QUEUE_PAGE_SIZE - (*p_page)->used < size)
 			p_page = &((*p_page)->next);
 	}
@@ -113,6 +111,7 @@ void *cmd_queue_alloc(size_t size)
 					CMD_QUEUE_PAGE_SIZE : size;
 		(*p_page)->address = malloc(alloc_size);
 		(*p_page)->next = NULL;
+		cmd_queue_pages_tail = *p_page;
 	}
 
 	offset = (*p_page)->used;
@@ -134,6 +133,7 @@ static void cmd_queue_free(void)
 	}
 
 	cmd_queue_pages = NULL;
+	cmd_queue_pages_tail = NULL;
 }
 
 void jtag_command_queue_reset(void)
@@ -142,6 +142,18 @@ void jtag_command_queue_reset(void)
 
 	jtag_command_queue = NULL;
 	next_command_pointer = &jtag_command_queue;
+}
+
+/**
+ * Copy a struct scan_field for insertion into the queue.
+ *
+ * This allocates a new copy of out_value using cmd_queue_alloc.
+ */
+void jtag_scan_field_clone(struct scan_field *dst, const struct scan_field *src)
+{
+	dst->num_bits	= src->num_bits;
+	dst->out_value	= buf_cpy(src->out_value, cmd_queue_alloc(DIV_ROUND_UP(src->num_bits, 8)), src->num_bits);
+	dst->in_value	= src->in_value;
 }
 
 enum scan_type jtag_scan_type(const struct scan_command *cmd)

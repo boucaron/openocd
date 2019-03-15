@@ -13,9 +13,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -386,8 +384,8 @@ static int dsp563xx_read_core_reg(struct target *target, int num)
 
 	reg_value = dsp563xx->core_regs[num];
 	buf_set_u32(dsp563xx->core_cache->reg_list[num].value, 0, 32, reg_value);
-	dsp563xx->core_cache->reg_list[num].valid = 1;
-	dsp563xx->core_cache->reg_list[num].dirty = 0;
+	dsp563xx->core_cache->reg_list[num].valid = true;
+	dsp563xx->core_cache->reg_list[num].dirty = false;
 
 	return ERROR_OK;
 }
@@ -402,8 +400,8 @@ static int dsp563xx_write_core_reg(struct target *target, int num)
 
 	reg_value = buf_get_u32(dsp563xx->core_cache->reg_list[num].value, 0, 32);
 	dsp563xx->core_regs[num] = reg_value;
-	dsp563xx->core_cache->reg_list[num].valid = 1;
-	dsp563xx->core_cache->reg_list[num].dirty = 0;
+	dsp563xx->core_cache->reg_list[num].valid = true;
+	dsp563xx->core_cache->reg_list[num].dirty = false;
 
 	return ERROR_OK;
 }
@@ -434,8 +432,8 @@ static int dsp563xx_set_core_reg(struct reg *reg, uint8_t *buf)
 		return ERROR_TARGET_NOT_HALTED;
 
 	buf_set_u32(reg->value, 0, reg->size, value);
-	reg->dirty = 1;
-	reg->valid = 1;
+	reg->dirty = true;
+	reg->valid = true;
 
 	return ERROR_OK;
 }
@@ -475,8 +473,8 @@ static void dsp563xx_build_reg_cache(struct target *target)
 		reg_list[i].name = dsp563xx_regs[i].name;
 		reg_list[i].size = 32;	/* dsp563xx_regs[i].bits; */
 		reg_list[i].value = calloc(1, 4);
-		reg_list[i].dirty = 0;
-		reg_list[i].valid = 0;
+		reg_list[i].dirty = false;
+		reg_list[i].valid = false;
 		reg_list[i].type = &dsp563xx_reg_type;
 		reg_list[i].arch_info = &arch_info[i];
 	}
@@ -510,7 +508,7 @@ static int dsp563xx_reg_read_high_io(struct target *target, uint32_t instr_mask,
 	if (err != ERROR_OK)
 		return err;
 	/* r0 is no longer valid on target */
-	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_R0].dirty = 1;
+	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_R0].dirty = true;
 
 	return ERROR_OK;
 }
@@ -536,7 +534,7 @@ static int dsp563xx_reg_write_high_io(struct target *target, uint32_t instr_mask
 		return err;
 
 	/* r0 is no longer valid on target */
-	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_R0].dirty = 1;
+	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_R0].dirty = true;
 
 	return ERROR_OK;
 }
@@ -747,7 +745,7 @@ static int dsp563xx_read_register(struct target *target, int num, int force)
 	struct dsp563xx_core_reg *arch_info;
 
 	if (force)
-		dsp563xx->core_cache->reg_list[num].valid = 0;
+		dsp563xx->core_cache->reg_list[num].valid = false;
 
 	if (!dsp563xx->core_cache->reg_list[num].valid) {
 		arch_info = dsp563xx->core_cache->reg_list[num].arch_info;
@@ -797,7 +795,7 @@ static int dsp563xx_write_register(struct target *target, int num, int force)
 	struct dsp563xx_core_reg *arch_info;
 
 	if (force)
-		dsp563xx->core_cache->reg_list[num].dirty = 1;
+		dsp563xx->core_cache->reg_list[num].dirty = true;
 
 	if (dsp563xx->core_cache->reg_list[num].dirty) {
 		arch_info = dsp563xx->core_cache->reg_list[num].arch_info;
@@ -886,8 +884,8 @@ static void dsp563xx_invalidate_x_context(struct target *target,
 
 		if ((arch_info->instr_mask >= addr_start) &&
 			(arch_info->instr_mask <= addr_end)) {
-			dsp563xx->core_cache->reg_list[i].valid = 0;
-			dsp563xx->core_cache->reg_list[i].dirty = 0;
+			dsp563xx->core_cache->reg_list[i].valid = false;
+			dsp563xx->core_cache->reg_list[i].dirty = false;
 		}
 	}
 }
@@ -987,7 +985,7 @@ static int dsp563xx_debug_init(struct target *target)
 		err = dsp563xx_once_execute_dw_ir(target->tap, 1, arch_info->instr_mask, sr);
 		if (err != ERROR_OK)
 			return err;
-		dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_SR].dirty = 1;
+		dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_SR].dirty = true;
 	}
 
 	err = dsp563xx_read_register(target, DSP563XX_REG_IDX_N0, 0);
@@ -1009,7 +1007,7 @@ static int dsp563xx_debug_init(struct target *target)
 		if (err != ERROR_OK)
 			return err;
 	}
-	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_N0].dirty = 1;
+	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_N0].dirty = true;
 
 	if (dsp563xx->core_regs[DSP563XX_REG_IDX_N1] != 0x000000) {
 		arch_info = dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_N1].arch_info;
@@ -1017,7 +1015,7 @@ static int dsp563xx_debug_init(struct target *target)
 		if (err != ERROR_OK)
 			return err;
 	}
-	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_N1].dirty = 1;
+	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_N1].dirty = true;
 
 	if (dsp563xx->core_regs[DSP563XX_REG_IDX_M0] != 0xffffff) {
 		arch_info = dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_M0].arch_info;
@@ -1025,7 +1023,7 @@ static int dsp563xx_debug_init(struct target *target)
 		if (err != ERROR_OK)
 			return err;
 	}
-	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_M0].dirty = 1;
+	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_M0].dirty = true;
 
 	if (dsp563xx->core_regs[DSP563XX_REG_IDX_M1] != 0xffffff) {
 		arch_info = dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_M1].arch_info;
@@ -1033,7 +1031,7 @@ static int dsp563xx_debug_init(struct target *target)
 		if (err != ERROR_OK)
 			return err;
 	}
-	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_M1].dirty = 1;
+	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_M1].dirty = true;
 
 	err = dsp563xx_save_context(target);
 	if (err != ERROR_OK)
@@ -1119,7 +1117,7 @@ static int dsp563xx_halt(struct target *target)
 
 static int dsp563xx_resume(struct target *target,
 	int current,
-	uint32_t address,
+	target_addr_t address,
 	int handle_breakpoints,
 	int debug_execution)
 {
@@ -1292,7 +1290,7 @@ static int dsp563xx_step_ex(struct target *target,
 
 static int dsp563xx_step(struct target *target,
 	int current,
-	uint32_t address,
+	target_addr_t address,
 	int handle_breakpoints)
 {
 	int err;
@@ -1376,7 +1374,7 @@ static int dsp563xx_deassert_reset(struct target *target)
 static int dsp563xx_run_algorithm(struct target *target,
 	int num_mem_params, struct mem_param *mem_params,
 	int num_reg_params, struct reg_param *reg_params,
-	uint32_t entry_point, uint32_t exit_point,
+	target_addr_t entry_point, target_addr_t exit_point,
 	int timeout_ms, void *arch_info)
 {
 	int i;
@@ -1389,6 +1387,8 @@ static int dsp563xx_run_algorithm(struct target *target,
 	}
 
 	for (i = 0; i < num_mem_params; i++) {
+		if (mem_params[i].direction == PARAM_IN)
+			continue;
 		retval = target_write_buffer(target, mem_params[i].address,
 				mem_params[i].size, mem_params[i].value);
 		if (retval != ERROR_OK)
@@ -1396,6 +1396,9 @@ static int dsp563xx_run_algorithm(struct target *target,
 	}
 
 	for (i = 0; i < num_reg_params; i++) {
+		if (reg_params[i].direction == PARAM_IN)
+			continue;
+
 		struct reg *reg = register_get_by_name(dsp563xx->core_cache,
 				reg_params[i].reg_name,
 				0);
@@ -1549,9 +1552,9 @@ static int dsp563xx_read_memory_core(struct target *target,
 		dsp563xx->read_core_reg(target, DSP563XX_REG_IDX_R1);
 
 	/* r0 is no longer valid on target */
-	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_R0].dirty = 1;
+	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_R0].dirty = true;
 	/* r1 is no longer valid on target */
-	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_R1].dirty = 1;
+	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_R1].dirty = true;
 
 	x = count;
 	b = buffer;
@@ -1594,7 +1597,7 @@ static int dsp563xx_read_memory_core(struct target *target,
 
 static int dsp563xx_read_memory(struct target *target,
 	int mem_type,
-	uint32_t address,
+	target_addr_t address,
 	uint32_t size,
 	uint32_t count,
 	uint8_t *buffer)
@@ -1662,7 +1665,7 @@ static int dsp563xx_read_memory(struct target *target,
 }
 
 static int dsp563xx_read_memory_default(struct target *target,
-	uint32_t address,
+	target_addr_t address,
 	uint32_t size,
 	uint32_t count,
 	uint8_t *buffer)
@@ -1673,7 +1676,7 @@ static int dsp563xx_read_memory_default(struct target *target,
 }
 
 static int dsp563xx_read_buffer_default(struct target *target,
-	uint32_t address,
+	target_addr_t address,
 	uint32_t size,
 	uint8_t *buffer)
 {
@@ -1684,7 +1687,7 @@ static int dsp563xx_read_buffer_default(struct target *target,
 
 static int dsp563xx_write_memory_core(struct target *target,
 	int mem_type,
-	uint32_t address,
+	target_addr_t address,
 	uint32_t size,
 	uint32_t count,
 	const uint8_t *buffer)
@@ -1696,7 +1699,7 @@ static int dsp563xx_write_memory_core(struct target *target,
 	const uint8_t *b;
 
 	LOG_DEBUG(
-		"memtype: %d address: 0x%8.8" PRIx32 ", size: 0x%8.8" PRIx32 ", count: 0x%8.8" PRIx32 "",
+		"memtype: %d address: 0x%8.8" TARGET_PRIxADDR ", size: 0x%8.8" PRIx32 ", count: 0x%8.8" PRIx32 "",
 		mem_type,
 		address,
 		size,
@@ -1731,9 +1734,9 @@ static int dsp563xx_write_memory_core(struct target *target,
 		dsp563xx->read_core_reg(target, DSP563XX_REG_IDX_R1);
 
 	/* r0 is no longer valid on target */
-	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_R0].dirty = 1;
+	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_R0].dirty = true;
 	/* r1 is no longer valid on target */
-	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_R1].dirty = 1;
+	dsp563xx->core_cache->reg_list[DSP563XX_REG_IDX_R1].dirty = true;
 
 	x = count;
 	b = buffer;
@@ -1768,7 +1771,7 @@ static int dsp563xx_write_memory_core(struct target *target,
 
 static int dsp563xx_write_memory(struct target *target,
 	int mem_type,
-	uint32_t address,
+	target_addr_t address,
 	uint32_t size,
 	uint32_t count,
 	const uint8_t *buffer)
@@ -1836,7 +1839,7 @@ static int dsp563xx_write_memory(struct target *target,
 }
 
 static int dsp563xx_write_memory_default(struct target *target,
-	uint32_t address,
+	target_addr_t address,
 	uint32_t size,
 	uint32_t count,
 	const uint8_t *buffer)
@@ -1846,7 +1849,7 @@ static int dsp563xx_write_memory_default(struct target *target,
 }
 
 static int dsp563xx_write_buffer_default(struct target *target,
-	uint32_t address,
+	target_addr_t address,
 	uint32_t size,
 	const uint8_t *buffer)
 {

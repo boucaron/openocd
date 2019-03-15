@@ -13,9 +13,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 /* The specification for SVF is available here:
@@ -223,7 +221,7 @@ static char *svf_read_line;
 static size_t svf_read_line_size;
 static char *svf_command_buffer;
 static size_t svf_command_buffer_size;
-static int svf_line_number = 1;
+static int svf_line_number;
 static int svf_getline(char **lineptr, size_t *n, FILE *stream);
 
 #define SVF_MAX_BUFFER_SIZE_TO_COMMIT   (1024 * 1024)
@@ -363,7 +361,7 @@ COMMAND_HANDLER(handle_svf_command)
 #define SVF_MAX_NUM_OF_OPTIONS 5
 	int command_num = 0;
 	int ret = ERROR_OK;
-	long long time_measure_ms;
+	int64_t time_measure_ms;
 	int time_measure_s, time_measure_m;
 
 	/* use NULL to indicate a "plain" svf file which accounts for
@@ -378,6 +376,7 @@ COMMAND_HANDLER(handle_svf_command)
 	/* parse command line */
 	svf_quiet = 0;
 	svf_nil = 0;
+	svf_progress_enabled = 0;
 	svf_ignore_error = 0;
 	for (unsigned int i = 0; i < CMD_ARGC; i++) {
 		if (strcmp(CMD_ARGV[i], "-tap") == 0) {
@@ -417,7 +416,7 @@ COMMAND_HANDLER(handle_svf_command)
 	time_measure_ms = timeval_ms();
 
 	/* init */
-	svf_line_number = 1;
+	svf_line_number = 0;
 	svf_command_buffer_size = 0;
 
 	svf_check_tdo_para_index = 0;
@@ -536,7 +535,7 @@ COMMAND_HANDLER(handle_svf_command)
 	time_measure_s %= 60;
 	if (time_measure_ms < 1000)
 		command_print(CMD_CTX,
-			"\r\nTime used: %dm%ds%lldms ",
+			"\r\nTime used: %dm%ds%" PRId64 "ms ",
 			time_measure_m,
 			time_measure_s,
 			time_measure_ms);
@@ -662,11 +661,13 @@ static int svf_read_command_from_file(FILE *fd)
 				if (svf_getline(&svf_read_line, &svf_read_line_size, svf_fd) <= 0)
 					return ERROR_FAIL;
 				i = -1;
+				/* fallthrough */
 			case '\r':
 				slash = 0;
 				/* Don't save '\r' and '\n' if no data is parsed */
 				if (!cmd_pos)
 					break;
+				/* fallthrough */
 			default:
 				/* The parsing code currently expects a space
 				 * before parentheses -- "TDI (123)".  Also a
@@ -739,6 +740,9 @@ parse_char:
 		}
 		pos++;
 	}
+
+	if (num == 0)
+		return ERROR_FAIL;
 
 	*num_of_argu = num;
 
@@ -1312,7 +1316,7 @@ XXR_common:
 			 * SEC]] [ENDSTATE end_state] */
 			/* RUNTEST [run_state] min_time SEC [MAXIMUM max_time SEC] [ENDSTATE
 			 * end_state] */
-			if ((num_of_argu < 3) && (num_of_argu > 11)) {
+			if ((num_of_argu < 3) || (num_of_argu > 11)) {
 				LOG_ERROR("invalid parameter of %s", argus[0]);
 				return ERROR_FAIL;
 			}

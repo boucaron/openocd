@@ -15,9 +15,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -112,8 +110,8 @@ static int avr32_read_core_reg(struct target *target, int num)
 
 	reg_value = ap7k->core_regs[num];
 	buf_set_u32(ap7k->core_cache->reg_list[num].value, 0, 32, reg_value);
-	ap7k->core_cache->reg_list[num].valid = 1;
-	ap7k->core_cache->reg_list[num].dirty = 0;
+	ap7k->core_cache->reg_list[num].valid = true;
+	ap7k->core_cache->reg_list[num].dirty = false;
 
 	return ERROR_OK;
 }
@@ -131,8 +129,8 @@ static int avr32_write_core_reg(struct target *target, int num)
 	reg_value = buf_get_u32(ap7k->core_cache->reg_list[num].value, 0, 32);
 	ap7k->core_regs[num] = reg_value;
 	LOG_DEBUG("write core reg %i value 0x%" PRIx32 "", num, reg_value);
-	ap7k->core_cache->reg_list[num].valid = 1;
-	ap7k->core_cache->reg_list[num].dirty = 0;
+	ap7k->core_cache->reg_list[num].valid = true;
+	ap7k->core_cache->reg_list[num].dirty = false;
 
 	return ERROR_OK;
 }
@@ -161,8 +159,8 @@ static int avr32_set_core_reg(struct reg *reg, uint8_t *buf)
 		return ERROR_TARGET_NOT_HALTED;
 
 	buf_set_u32(reg->value, 0, 32, value);
-	reg->dirty = 1;
-	reg->valid = 1;
+	reg->dirty = true;
+	reg->valid = true;
 
 	return ERROR_OK;
 }
@@ -198,8 +196,8 @@ static struct reg_cache *avr32_build_reg_cache(struct target *target)
 		reg_list[i].name = avr32_core_reg_list[i];
 		reg_list[i].size = 32;
 		reg_list[i].value = calloc(1, 4);
-		reg_list[i].dirty = 0;
-		reg_list[i].valid = 0;
+		reg_list[i].dirty = false;
+		reg_list[i].valid = false;
 		reg_list[i].type = &avr32_reg_type;
 		reg_list[i].arch_info = &arch_info[i];
 	}
@@ -314,7 +312,7 @@ static int avr32_ap7k_deassert_reset(struct target *target)
 }
 
 static int avr32_ap7k_resume(struct target *target, int current,
-	uint32_t address, int handle_breakpoints, int debug_execution)
+	target_addr_t address, int handle_breakpoints, int debug_execution)
 {
 	struct avr32_ap7k_common *ap7k = target_to_ap7k(target);
 	struct breakpoint *breakpoint = NULL;
@@ -350,7 +348,7 @@ static int avr32_ap7k_resume(struct target *target, int current,
 		/* Single step past breakpoint at current address */
 		breakpoint = breakpoint_find(target, resume_pc);
 		if (breakpoint) {
-			LOG_DEBUG("unset breakpoint at 0x%8.8" PRIx32 "", breakpoint->address);
+			LOG_DEBUG("unset breakpoint at 0x%8.8" TARGET_PRIxADDR "", breakpoint->address);
 #if 0
 			avr32_ap7k_unset_breakpoint(target, breakpoint);
 			avr32_ap7k_single_step_core(target);
@@ -396,7 +394,7 @@ static int avr32_ap7k_resume(struct target *target, int current,
 }
 
 static int avr32_ap7k_step(struct target *target, int current,
-	uint32_t address, int handle_breakpoints)
+	target_addr_t address, int handle_breakpoints)
 {
 	LOG_ERROR("%s: implement me", __func__);
 
@@ -433,12 +431,12 @@ static int avr32_ap7k_remove_watchpoint(struct target *target,
 	return ERROR_OK;
 }
 
-static int avr32_ap7k_read_memory(struct target *target, uint32_t address,
+static int avr32_ap7k_read_memory(struct target *target, target_addr_t address,
 	uint32_t size, uint32_t count, uint8_t *buffer)
 {
 	struct avr32_ap7k_common *ap7k = target_to_ap7k(target);
 
-	LOG_DEBUG("address: 0x%8.8" PRIx32 ", size: 0x%8.8" PRIx32 ", count: 0x%8.8" PRIx32 "",
+	LOG_DEBUG("address: 0x%8.8" TARGET_PRIxADDR ", size: 0x%8.8" PRIx32 ", count: 0x%8.8" PRIx32 "",
 		address,
 		size,
 		count);
@@ -474,12 +472,12 @@ static int avr32_ap7k_read_memory(struct target *target, uint32_t address,
 	return ERROR_OK;
 }
 
-static int avr32_ap7k_write_memory(struct target *target, uint32_t address,
+static int avr32_ap7k_write_memory(struct target *target, target_addr_t address,
 	uint32_t size, uint32_t count, const uint8_t *buffer)
 {
 	struct avr32_ap7k_common *ap7k = target_to_ap7k(target);
 
-	LOG_DEBUG("address: 0x%8.8" PRIx32 ", size: 0x%8.8" PRIx32 ", count: 0x%8.8" PRIx32 "",
+	LOG_DEBUG("address: 0x%8.8" TARGET_PRIxADDR ", size: 0x%8.8" PRIx32 ", count: 0x%8.8" PRIx32 "",
 		address,
 		size,
 		count);

@@ -18,6 +18,9 @@
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
  *   GNU General Public License for more details.                          *
+ *                                                                         *
+ *   You should have received a copy of the GNU General Public License     *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -421,8 +424,8 @@ static int or1k_read_core_reg(struct target *target, int num)
 		reg_value = or1k->core_regs[num];
 		buf_set_u32(or1k->core_cache->reg_list[num].value, 0, 32, reg_value);
 		LOG_DEBUG("Read core reg %i value 0x%08" PRIx32, num , reg_value);
-		or1k->core_cache->reg_list[num].valid = 1;
-		or1k->core_cache->reg_list[num].dirty = 0;
+		or1k->core_cache->reg_list[num].valid = true;
+		or1k->core_cache->reg_list[num].dirty = false;
 	} else {
 		/* This is an spr, always read value from HW */
 		int retval = du_core->or1k_jtag_read_cpu(&or1k->jtag,
@@ -450,8 +453,8 @@ static int or1k_write_core_reg(struct target *target, int num)
 	uint32_t reg_value = buf_get_u32(or1k->core_cache->reg_list[num].value, 0, 32);
 	or1k->core_regs[num] = reg_value;
 	LOG_DEBUG("Write core reg %i value 0x%08" PRIx32, num , reg_value);
-	or1k->core_cache->reg_list[num].valid = 1;
-	or1k->core_cache->reg_list[num].dirty = 0;
+	or1k->core_cache->reg_list[num].valid = true;
+	or1k->core_cache->reg_list[num].dirty = false;
 
 	return ERROR_OK;
 }
@@ -484,8 +487,8 @@ static int or1k_set_core_reg(struct reg *reg, uint8_t *buf)
 
 	if (or1k_reg->list_num < OR1KNUMCOREREGS) {
 		buf_set_u32(reg->value, 0, 32, value);
-		reg->dirty = 1;
-		reg->valid = 1;
+		reg->dirty = true;
+		reg->valid = true;
 	} else {
 		/* This is an spr, write it to the HW */
 		int retval = du_core->or1k_jtag_write_cpu(&or1k->jtag,
@@ -538,8 +541,8 @@ static struct reg_cache *or1k_build_reg_cache(struct target *target)
 		reg_list[i].group = or1k_core_reg_list_arch_info[i].group;
 		reg_list[i].size = 32;
 		reg_list[i].value = calloc(1, 4);
-		reg_list[i].dirty = 0;
-		reg_list[i].valid = 0;
+		reg_list[i].dirty = false;
+		reg_list[i].valid = false;
 		reg_list[i].type = &or1k_reg_type;
 		reg_list[i].arch_info = &arch_info[i];
 		reg_list[i].number = i;
@@ -858,7 +861,7 @@ static int or1k_resume_or_step(struct target *target, int current,
 		/* Single step past breakpoint at current address */
 		breakpoint = breakpoint_find(target, resume_pc);
 		if (breakpoint) {
-			LOG_DEBUG("Unset breakpoint at 0x%08" PRIx32, breakpoint->address);
+			LOG_DEBUG("Unset breakpoint at 0x%08" TARGET_PRIxADDR, breakpoint->address);
 			retval = or1k_remove_breakpoint(target, breakpoint);
 			if (retval != ERROR_OK)
 				return retval;
@@ -894,7 +897,8 @@ static int or1k_resume_or_step(struct target *target, int current,
 }
 
 static int or1k_resume(struct target *target, int current,
-		uint32_t address, int handle_breakpoints, int debug_execution)
+		       target_addr_t address, int handle_breakpoints,
+		       int debug_execution)
 {
 	return or1k_resume_or_step(target, current, address,
 				   handle_breakpoints,
@@ -903,7 +907,7 @@ static int or1k_resume(struct target *target, int current,
 }
 
 static int or1k_step(struct target *target, int current,
-		     uint32_t address, int handle_breakpoints)
+		     target_addr_t address, int handle_breakpoints)
 {
 	return or1k_resume_or_step(target, current, address,
 				   handle_breakpoints,
@@ -919,7 +923,7 @@ static int or1k_add_breakpoint(struct target *target,
 	struct or1k_du *du_core = or1k_to_du(or1k);
 	uint8_t data;
 
-	LOG_DEBUG("Adding breakpoint: addr 0x%08" PRIx32 ", len %d, type %d, set: %d, id: %" PRId32,
+	LOG_DEBUG("Adding breakpoint: addr 0x%08" TARGET_PRIxADDR ", len %d, type %d, set: %d, id: %" PRId32,
 		  breakpoint->address, breakpoint->length, breakpoint->type,
 		  breakpoint->set, breakpoint->unique_id);
 
@@ -934,7 +938,7 @@ static int or1k_add_breakpoint(struct target *target,
 					 1,
 					 &data);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("Error while reading the instruction at 0x%08" PRIx32,
+		LOG_ERROR("Error while reading the instruction at 0x%08" TARGET_PRIxADDR,
 			   breakpoint->address);
 		return retval;
 	}
@@ -955,14 +959,15 @@ static int or1k_add_breakpoint(struct target *target,
 					  or1k_trap_insn);
 
 	if (retval != ERROR_OK) {
-		LOG_ERROR("Error while writing OR1K_TRAP_INSTR at 0x%08" PRIx32,
+		LOG_ERROR("Error while writing OR1K_TRAP_INSTR at 0x%08" TARGET_PRIxADDR,
 			   breakpoint->address);
 		return retval;
 	}
 
 	/* invalidate instruction cache */
+	uint32_t addr = breakpoint->address;
 	retval = du_core->or1k_jtag_write_cpu(&or1k->jtag,
-			OR1K_ICBIR_CPU_REG_ADD, 1, &breakpoint->address);
+			OR1K_ICBIR_CPU_REG_ADD, 1, &addr);
 	if (retval != ERROR_OK) {
 		LOG_ERROR("Error while invalidating the ICACHE");
 		return retval;
@@ -977,7 +982,7 @@ static int or1k_remove_breakpoint(struct target *target,
 	struct or1k_common *or1k = target_to_or1k(target);
 	struct or1k_du *du_core = or1k_to_du(or1k);
 
-	LOG_DEBUG("Removing breakpoint: addr 0x%08" PRIx32 ", len %d, type %d, set: %d, id: %" PRId32,
+	LOG_DEBUG("Removing breakpoint: addr 0x%08" TARGET_PRIxADDR ", len %d, type %d, set: %d, id: %" PRId32,
 		  breakpoint->address, breakpoint->length, breakpoint->type,
 		  breakpoint->set, breakpoint->unique_id);
 
@@ -993,14 +998,15 @@ static int or1k_remove_breakpoint(struct target *target,
 					  breakpoint->orig_instr);
 
 	if (retval != ERROR_OK) {
-		LOG_ERROR("Error while writing back the instruction at 0x%08" PRIx32,
+		LOG_ERROR("Error while writing back the instruction at 0x%08" TARGET_PRIxADDR,
 			   breakpoint->address);
 		return retval;
 	}
 
 	/* invalidate instruction cache */
+	uint32_t addr = breakpoint->address;
 	retval = du_core->or1k_jtag_write_cpu(&or1k->jtag,
-			OR1K_ICBIR_CPU_REG_ADD, 1, &breakpoint->address);
+			OR1K_ICBIR_CPU_REG_ADD, 1, &addr);
 	if (retval != ERROR_OK) {
 		LOG_ERROR("Error while invalidating the ICACHE");
 		return retval;
@@ -1023,13 +1029,13 @@ static int or1k_remove_watchpoint(struct target *target,
 	return ERROR_OK;
 }
 
-static int or1k_read_memory(struct target *target, uint32_t address,
+static int or1k_read_memory(struct target *target, target_addr_t address,
 		uint32_t size, uint32_t count, uint8_t *buffer)
 {
 	struct or1k_common *or1k = target_to_or1k(target);
 	struct or1k_du *du_core = or1k_to_du(or1k);
 
-	LOG_DEBUG("Read memory at 0x%08" PRIx32 ", size: %" PRIu32 ", count: 0x%08" PRIx32, address, size, count);
+	LOG_DEBUG("Read memory at 0x%08" TARGET_PRIxADDR ", size: %" PRIu32 ", count: 0x%08" PRIx32, address, size, count);
 
 	if (target->state != TARGET_HALTED) {
 		LOG_ERROR("Target not halted");
@@ -1050,13 +1056,13 @@ static int or1k_read_memory(struct target *target, uint32_t address,
 	return du_core->or1k_jtag_read_memory(&or1k->jtag, address, size, count, buffer);
 }
 
-static int or1k_write_memory(struct target *target, uint32_t address,
+static int or1k_write_memory(struct target *target, target_addr_t address,
 		uint32_t size, uint32_t count, const uint8_t *buffer)
 {
 	struct or1k_common *or1k = target_to_or1k(target);
 	struct or1k_du *du_core = or1k_to_du(or1k);
 
-	LOG_DEBUG("Write memory at 0x%08" PRIx32 ", size: %" PRIu32 ", count: 0x%08" PRIx32, address, size, count);
+	LOG_DEBUG("Write memory at 0x%08" TARGET_PRIxADDR ", size: %" PRIu32 ", count: 0x%08" PRIx32, address, size, count);
 
 	if (target->state != TARGET_HALTED) {
 		LOG_WARNING("Target not halted");
@@ -1200,7 +1206,7 @@ int or1k_get_gdb_fileio_info(struct target *target, struct gdb_fileio_info *file
 	return ERROR_FAIL;
 }
 
-static int or1k_checksum_memory(struct target *target, uint32_t address,
+static int or1k_checksum_memory(struct target *target, target_addr_t address,
 		uint32_t count, uint32_t *checksum) {
 
 	return ERROR_FAIL;
@@ -1242,8 +1248,7 @@ static int or1k_profiling(struct target *target, uint32_t *samples,
 		samples[sample_count++] = reg_value;
 
 		gettimeofday(&now, NULL);
-		if ((sample_count >= max_num_samples) ||
-			((now.tv_sec >= timeout.tv_sec) && (now.tv_usec >= timeout.tv_usec))) {
+		if ((sample_count >= max_num_samples) || timeval_compare(&now, &timeout) > 0) {
 			LOG_INFO("Profiling completed. %" PRIu32 " samples.", sample_count);
 			break;
 		}

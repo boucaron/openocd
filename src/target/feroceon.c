@@ -16,9 +16,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 /*
@@ -64,6 +62,13 @@ static int feroceon_assert_reset(struct target *target)
 	struct arm7_9_common *arm7_9 = arm->arch_info;
 	int ud = arm7_9->use_dbgrq;
 
+	/* TODO: apply hw reset signal in not examined state */
+	if (!(target_was_examined(target))) {
+		LOG_WARNING("Reset is not asserted because the target is not examined.");
+		LOG_WARNING("Use a reset button or power cycle the target.");
+		return ERROR_TARGET_NOT_EXAMINED;
+	}
+
 	arm7_9->use_dbgrq = 0;
 	if (target->reset_halt)
 		arm7_9_halt(target);
@@ -88,7 +93,7 @@ static int feroceon_dummy_clock_out(struct arm_jtag *jtag_info, uint32_t instr)
 	if (retval != ERROR_OK)
 		return retval;
 
-	retval = arm_jtag_set_instr(jtag_info, jtag_info->intest_instr, NULL, TAP_DRPAUSE);
+	retval = arm_jtag_set_instr(jtag_info->tap, jtag_info->intest_instr, NULL, TAP_DRPAUSE);
 	if (retval != ERROR_OK)
 		return retval;
 
@@ -455,7 +460,7 @@ static int feroceon_examine_debug_reason(struct target *target)
 }
 
 static int feroceon_bulk_write_memory(struct target *target,
-		uint32_t address, uint32_t count, const uint8_t *buffer)
+		target_addr_t address, uint32_t count, const uint8_t *buffer)
 {
 	int retval;
 	struct arm *arm = target->arch_info;
@@ -527,8 +532,8 @@ static int feroceon_bulk_write_memory(struct target *target,
 
 	/* set up target address in r0 */
 	buf_set_u32(arm->core_cache->reg_list[0].value, 0, 32, address);
-	arm->core_cache->reg_list[0].valid = 1;
-	arm->core_cache->reg_list[0].dirty = 1;
+	arm->core_cache->reg_list[0].valid = true;
+	arm->core_cache->reg_list[0].dirty = true;
 	arm->core_state = ARM_STATE_ARM;
 
 	embeddedice_write_reg(&arm7_9->eice_cache->reg_list[EICE_COMMS_DATA], 0);
@@ -560,7 +565,7 @@ static int feroceon_bulk_write_memory(struct target *target,
 			buf_get_u32(arm->core_cache->reg_list[0].value, 0, 32);
 		if (endaddress != address + count*4) {
 			LOG_ERROR("DCC write failed,"
-				" expected end address 0x%08" PRIx32
+				" expected end address 0x%08" TARGET_PRIxADDR
 				" got 0x%0" PRIx32 "",
 				address + count*4, endaddress);
 			retval = ERROR_FAIL;
@@ -570,12 +575,12 @@ static int feroceon_bulk_write_memory(struct target *target,
 	/* restore target state */
 	for (i = 0; i <= 5; i++) {
 		buf_set_u32(arm->core_cache->reg_list[i].value, 0, 32, save[i]);
-		arm->core_cache->reg_list[i].valid = 1;
-		arm->core_cache->reg_list[i].dirty = 1;
+		arm->core_cache->reg_list[i].valid = true;
+		arm->core_cache->reg_list[i].dirty = true;
 	}
 	buf_set_u32(arm->pc->value, 0, 32, save[i]);
-	arm->pc->valid = 1;
-	arm->pc->dirty = 1;
+	arm->pc->valid = true;
+	arm->pc->dirty = true;
 	arm->core_state = core_state;
 
 	return retval;
@@ -705,6 +710,7 @@ struct target_type feroceon_target = {
 	.deassert_reset = arm7_9_deassert_reset,
 	.soft_reset_halt = arm926ejs_soft_reset_halt,
 
+	.get_gdb_arch = arm_get_gdb_arch,
 	.get_gdb_reg_list = arm_get_gdb_reg_list,
 
 	.read_memory = arm7_9_read_memory,
@@ -742,6 +748,7 @@ struct target_type dragonite_target = {
 	.deassert_reset = arm7_9_deassert_reset,
 	.soft_reset_halt = arm7_9_soft_reset_halt,
 
+	.get_gdb_arch = arm_get_gdb_arch,
 	.get_gdb_reg_list = arm_get_gdb_reg_list,
 
 	.read_memory = arm7_9_read_memory,

@@ -19,9 +19,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -61,7 +59,7 @@
 
 /* forward declarations */
 static int xscale_resume(struct target *, int current,
-	uint32_t address, int handle_breakpoints, int debug_execution);
+	target_addr_t address, int handle_breakpoints, int debug_execution);
 static int xscale_debug_entry(struct target *);
 static int xscale_restore_banked(struct target *);
 static int xscale_get_reg(struct reg *reg);
@@ -75,7 +73,7 @@ static int xscale_read_trace(struct target *);
  * mini-ICache, which is 2K of code writable only via JTAG.
  */
 static const uint8_t xscale_debug_handler[] = {
-#include "xscale_debug.inc"
+#include "../../contrib/loaders/debug/xscale/debug_handler.inc"
 };
 
 static const char *const xscale_reg_list[] = {
@@ -214,8 +212,8 @@ static int xscale_read_dcsr(struct target *target)
 		return retval;
 	}
 
-	xscale->reg_cache->reg_list[XSCALE_DCSR].dirty = 0;
-	xscale->reg_cache->reg_list[XSCALE_DCSR].valid = 1;
+	xscale->reg_cache->reg_list[XSCALE_DCSR].dirty = false;
+	xscale->reg_cache->reg_list[XSCALE_DCSR].valid = true;
 
 	/* write the register with the value we just read
 	 * on this second pass, only the first bit of field0 is guaranteed to be 0)
@@ -406,8 +404,7 @@ static int xscale_read_tx(struct target *target, int consume)
 		}
 
 		gettimeofday(&now, NULL);
-		if ((now.tv_sec > timeout.tv_sec) ||
-			((now.tv_sec == timeout.tv_sec) && (now.tv_usec > timeout.tv_usec))) {
+		if (timeval_compare(&now, &timeout) > 0) {
 			LOG_ERROR("time out reading TX register");
 			return ERROR_TARGET_TIMEOUT;
 		}
@@ -627,8 +624,8 @@ static int xscale_write_dcsr(struct target *target, int hold_rst, int ext_dbg_br
 		return retval;
 	}
 
-	xscale->reg_cache->reg_list[XSCALE_DCSR].dirty = 0;
-	xscale->reg_cache->reg_list[XSCALE_DCSR].valid = 1;
+	xscale->reg_cache->reg_list[XSCALE_DCSR].dirty = false;
+	xscale->reg_cache->reg_list[XSCALE_DCSR].valid = true;
 
 	return ERROR_OK;
 }
@@ -871,21 +868,21 @@ static int xscale_debug_entry(struct target *target)
 
 	/* move r0 from buffer to register cache */
 	buf_set_u32(arm->core_cache->reg_list[0].value, 0, 32, buffer[0]);
-	arm->core_cache->reg_list[0].dirty = 1;
-	arm->core_cache->reg_list[0].valid = 1;
+	arm->core_cache->reg_list[0].dirty = true;
+	arm->core_cache->reg_list[0].valid = true;
 	LOG_DEBUG("r0: 0x%8.8" PRIx32 "", buffer[0]);
 
 	/* move pc from buffer to register cache */
 	buf_set_u32(arm->pc->value, 0, 32, buffer[1]);
-	arm->pc->dirty = 1;
-	arm->pc->valid = 1;
+	arm->pc->dirty = true;
+	arm->pc->valid = true;
 	LOG_DEBUG("pc: 0x%8.8" PRIx32 "", buffer[1]);
 
 	/* move data from buffer to register cache */
 	for (i = 1; i <= 7; i++) {
 		buf_set_u32(arm->core_cache->reg_list[i].value, 0, 32, buffer[1 + i]);
-		arm->core_cache->reg_list[i].dirty = 1;
-		arm->core_cache->reg_list[i].valid = 1;
+		arm->core_cache->reg_list[i].dirty = true;
+		arm->core_cache->reg_list[i].valid = true;
 		LOG_DEBUG("r%i: 0x%8.8" PRIx32 "", i, buffer[i + 1]);
 	}
 
@@ -923,7 +920,7 @@ static int xscale_debug_entry(struct target *target)
 	/* mark xscale regs invalid to ensure they are retrieved from the
 	 * debug handler if requested  */
 	for (i = 0; i < xscale->reg_cache->num_regs; i++)
-		xscale->reg_cache->reg_list[i].valid = 0;
+		xscale->reg_cache->reg_list[i].valid = false;
 
 	/* examine debug reason */
 	xscale_read_dcsr(target);
@@ -1122,7 +1119,7 @@ static void xscale_free_trace_data(struct xscale_common *xscale)
 }
 
 static int xscale_resume(struct target *target, int current,
-	uint32_t address, int handle_breakpoints, int debug_execution)
+	target_addr_t address, int handle_breakpoints, int debug_execution)
 {
 	struct xscale_common *xscale = target_to_xscale(target);
 	struct arm *arm = &xscale->arm;
@@ -1167,7 +1164,8 @@ static int xscale_resume(struct target *target, int current,
 			enum trace_mode saved_trace_mode;
 
 			/* there's a breakpoint at the current PC, we have to step over it */
-			LOG_DEBUG("unset breakpoint at 0x%8.8" PRIx32 "", breakpoint->address);
+			LOG_DEBUG("unset breakpoint at " TARGET_ADDR_FMT "",
+				breakpoint->address);
 			xscale_unset_breakpoint(target, breakpoint);
 
 			/* calculate PC of next instruction */
@@ -1224,7 +1222,8 @@ static int xscale_resume(struct target *target, int current,
 			LOG_DEBUG("disable single-step");
 			xscale_disable_single_step(target);
 
-			LOG_DEBUG("set breakpoint at 0x%8.8" PRIx32 "", breakpoint->address);
+			LOG_DEBUG("set breakpoint at " TARGET_ADDR_FMT "",
+				breakpoint->address);
 			xscale_set_breakpoint(target, breakpoint);
 		}
 	}
@@ -1386,7 +1385,7 @@ static int xscale_step_inner(struct target *target, int current,
 }
 
 static int xscale_step(struct target *target, int current,
-	uint32_t address, int handle_breakpoints)
+	target_addr_t address, int handle_breakpoints)
 {
 	struct arm *arm = target_to_arm(target);
 	struct breakpoint *breakpoint = NULL;
@@ -1445,6 +1444,13 @@ static int xscale_step(struct target *target, int current,
 static int xscale_assert_reset(struct target *target)
 {
 	struct xscale_common *xscale = target_to_xscale(target);
+
+	/* TODO: apply hw reset signal in not examined state */
+	if (!(target_was_examined(target))) {
+		LOG_WARNING("Reset is not asserted because the target is not examined.");
+		LOG_WARNING("Use a reset button or power cycle the target.");
+		return ERROR_TARGET_NOT_EXAMINED;
+	}
 
 	LOG_DEBUG("target->state: %s",
 		target_state_name(target));
@@ -1573,7 +1579,6 @@ static int xscale_deassert_reset(struct target *target)
 
 			address += buf_cnt;
 		}
-		;
 
 		retval = xscale_load_ic(target, 0x0,
 				xscale->low_vectors);
@@ -1774,7 +1779,7 @@ dirty:
 	return ERROR_OK;
 }
 
-static int xscale_read_memory(struct target *target, uint32_t address,
+static int xscale_read_memory(struct target *target, target_addr_t address,
 	uint32_t size, uint32_t count, uint8_t *buffer)
 {
 	struct xscale_common *xscale = target_to_xscale(target);
@@ -1782,7 +1787,7 @@ static int xscale_read_memory(struct target *target, uint32_t address,
 	uint32_t i;
 	int retval;
 
-	LOG_DEBUG("address: 0x%8.8" PRIx32 ", size: 0x%8.8" PRIx32 ", count: 0x%8.8" PRIx32,
+	LOG_DEBUG("address: " TARGET_ADDR_FMT ", size: 0x%8.8" PRIx32 ", count: 0x%8.8" PRIx32,
 		address,
 		size,
 		count);
@@ -1860,7 +1865,7 @@ static int xscale_read_memory(struct target *target, uint32_t address,
 	return ERROR_OK;
 }
 
-static int xscale_read_phys_memory(struct target *target, uint32_t address,
+static int xscale_read_phys_memory(struct target *target, target_addr_t address,
 	uint32_t size, uint32_t count, uint8_t *buffer)
 {
 	struct xscale_common *xscale = target_to_xscale(target);
@@ -1875,13 +1880,13 @@ static int xscale_read_phys_memory(struct target *target, uint32_t address,
 	return ERROR_FAIL;
 }
 
-static int xscale_write_memory(struct target *target, uint32_t address,
+static int xscale_write_memory(struct target *target, target_addr_t address,
 	uint32_t size, uint32_t count, const uint8_t *buffer)
 {
 	struct xscale_common *xscale = target_to_xscale(target);
 	int retval;
 
-	LOG_DEBUG("address: 0x%8.8" PRIx32 ", size: 0x%8.8" PRIx32 ", count: 0x%8.8" PRIx32,
+	LOG_DEBUG("address: " TARGET_ADDR_FMT ", size: 0x%8.8" PRIx32 ", count: 0x%8.8" PRIx32,
 		address,
 		size,
 		count);
@@ -1959,7 +1964,7 @@ static int xscale_write_memory(struct target *target, uint32_t address,
 	return ERROR_OK;
 }
 
-static int xscale_write_phys_memory(struct target *target, uint32_t address,
+static int xscale_write_phys_memory(struct target *target, target_addr_t address,
 	uint32_t size, uint32_t count, const uint8_t *buffer)
 {
 	struct xscale_common *xscale = target_to_xscale(target);
@@ -2418,8 +2423,8 @@ static int xscale_get_reg(struct reg *reg)
 		xscale_read_tx(target, 1);
 		buf_cpy(xscale->reg_cache->reg_list[XSCALE_TX].value, reg->value, 32);
 
-		reg->dirty = 0;
-		reg->valid = 1;
+		reg->dirty = false;
+		reg->valid = true;
 	}
 
 	return ERROR_OK;
@@ -2663,7 +2668,7 @@ static int xscale_analyze_trace(struct target *target, struct command_context *c
 	struct xscale_common *xscale = target_to_xscale(target);
 	struct xscale_trace_data *trace_data = xscale->trace.data;
 	int i, retval;
-	uint32_t breakpoint_pc;
+	uint32_t breakpoint_pc = 0;
 	struct arm_instruction instruction;
 	uint32_t current_pc = 0;/* initialized when address determined */
 
@@ -2885,8 +2890,8 @@ static void xscale_build_reg_cache(struct target *target)
 	for (i = 0; i < num_regs; i++) {
 		(*cache_p)->reg_list[i].name = xscale_reg_list[i];
 		(*cache_p)->reg_list[i].value = calloc(4, 1);
-		(*cache_p)->reg_list[i].dirty = 0;
-		(*cache_p)->reg_list[i].valid = 0;
+		(*cache_p)->reg_list[i].dirty = false;
+		(*cache_p)->reg_list[i].valid = false;
 		(*cache_p)->reg_list[i].size = 32;
 		(*cache_p)->reg_list[i].arch_info = &arch_info[i];
 		(*cache_p)->reg_list[i].type = &xscale_reg_type;
@@ -3089,7 +3094,7 @@ COMMAND_HANDLER(xscale_handle_cache_info_command)
 }
 
 static int xscale_virt2phys(struct target *target,
-	uint32_t virtual, uint32_t *physical)
+	target_addr_t virtual, target_addr_t *physical)
 {
 	struct xscale_common *xscale = target_to_xscale(target);
 	uint32_t cb;
@@ -3426,7 +3431,7 @@ COMMAND_HANDLER(xscale_handle_dump_trace_command)
 	struct target *target = get_current_target(CMD_CTX);
 	struct xscale_common *xscale = target_to_xscale(target);
 	struct xscale_trace_data *trace_data;
-	struct fileio file;
+	struct fileio *file;
 	int retval;
 
 	retval = xscale_verify_pointer(CMD_CTX, xscale);
@@ -3454,19 +3459,19 @@ COMMAND_HANDLER(xscale_handle_dump_trace_command)
 	while (trace_data) {
 		int i;
 
-		fileio_write_u32(&file, trace_data->chkpt0);
-		fileio_write_u32(&file, trace_data->chkpt1);
-		fileio_write_u32(&file, trace_data->last_instruction);
-		fileio_write_u32(&file, trace_data->depth);
+		fileio_write_u32(file, trace_data->chkpt0);
+		fileio_write_u32(file, trace_data->chkpt1);
+		fileio_write_u32(file, trace_data->last_instruction);
+		fileio_write_u32(file, trace_data->depth);
 
 		for (i = 0; i < trace_data->depth; i++)
-			fileio_write_u32(&file, trace_data->entries[i].data |
+			fileio_write_u32(file, trace_data->entries[i].data |
 				((trace_data->entries[i].type & 0xffff) << 16));
 
 		trace_data = trace_data->next;
 	}
 
-	fileio_close(&file);
+	fileio_close(file);
 
 	return ERROR_OK;
 }
@@ -3698,6 +3703,7 @@ struct target_type xscale_target = {
 	.deassert_reset = xscale_deassert_reset,
 
 	/* REVISIT on some cores, allow exporting iwmmxt registers ... */
+	.get_gdb_arch = arm_get_gdb_arch,
 	.get_gdb_reg_list = arm_get_gdb_reg_list,
 
 	.read_memory = xscale_read_memory,

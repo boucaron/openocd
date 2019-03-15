@@ -14,9 +14,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -96,7 +94,7 @@ static int arm920t_read_cp15_physical(struct target *target,
 	retval = arm_jtag_scann(jtag_info, 0xf, TAP_IDLE);
 	if (retval != ERROR_OK)
 		return retval;
-	retval = arm_jtag_set_instr(jtag_info, jtag_info->intest_instr, NULL, TAP_IDLE);
+	retval = arm_jtag_set_instr(jtag_info->tap, jtag_info->intest_instr, NULL, TAP_IDLE);
 	if (retval != ERROR_OK)
 		return retval;
 
@@ -151,7 +149,7 @@ static int arm920t_write_cp15_physical(struct target *target,
 	retval = arm_jtag_scann(jtag_info, 0xf, TAP_IDLE);
 	if (retval != ERROR_OK)
 		return retval;
-	retval = arm_jtag_set_instr(jtag_info, jtag_info->intest_instr, NULL, TAP_IDLE);
+	retval = arm_jtag_set_instr(jtag_info->tap, jtag_info->intest_instr, NULL, TAP_IDLE);
 	if (retval != ERROR_OK)
 		return retval;
 
@@ -204,7 +202,7 @@ static int arm920t_execute_cp15(struct target *target, uint32_t cp15_opcode,
 	retval = arm_jtag_scann(jtag_info, 0xf, TAP_IDLE);
 	if (retval != ERROR_OK)
 		return retval;
-	retval = arm_jtag_set_instr(jtag_info, jtag_info->intest_instr, NULL, TAP_IDLE);
+	retval = arm_jtag_set_instr(jtag_info->tap, jtag_info->intest_instr, NULL, TAP_IDLE);
 	if (retval != ERROR_OK)
 		return retval;
 
@@ -285,8 +283,8 @@ static int arm920t_read_cp15_interpreted(struct target *target,
 		return ERROR_FAIL;
 	}
 
-	r[0].dirty = 1;
-	r[1].dirty = 1;
+	r[0].dirty = true;
+	r[1].dirty = true;
 
 	return ERROR_OK;
 }
@@ -329,8 +327,8 @@ int arm920t_write_cp15_interpreted(struct target *target,
 		return ERROR_FAIL;
 	}
 
-	r[0].dirty = 1;
-	r[1].dirty = 1;
+	r[0].dirty = true;
+	r[1].dirty = true;
 
 	return ERROR_OK;
 }
@@ -555,7 +553,7 @@ static int arm920_mmu(struct target *target, int *enabled)
 }
 
 static int arm920_virt2phys(struct target *target,
-	uint32_t virt, uint32_t *phys)
+	target_addr_t virt, target_addr_t *phys)
 {
 	uint32_t cb;
 	struct arm920t_common *arm920t = target_to_arm920(target);
@@ -570,7 +568,7 @@ static int arm920_virt2phys(struct target *target,
 }
 
 /** Reads a buffer, in the specified word size, with current MMU settings. */
-int arm920t_read_memory(struct target *target, uint32_t address,
+int arm920t_read_memory(struct target *target, target_addr_t address,
 	uint32_t size, uint32_t count, uint8_t *buffer)
 {
 	int retval;
@@ -582,7 +580,7 @@ int arm920t_read_memory(struct target *target, uint32_t address,
 
 
 static int arm920t_read_phys_memory(struct target *target,
-	uint32_t address, uint32_t size,
+	target_addr_t address, uint32_t size,
 	uint32_t count, uint8_t *buffer)
 {
 	struct arm920t_common *arm920t = target_to_arm920(target);
@@ -592,7 +590,7 @@ static int arm920t_read_phys_memory(struct target *target,
 }
 
 static int arm920t_write_phys_memory(struct target *target,
-	uint32_t address, uint32_t size,
+	target_addr_t address, uint32_t size,
 	uint32_t count, const uint8_t *buffer)
 {
 	struct arm920t_common *arm920t = target_to_arm920(target);
@@ -602,7 +600,7 @@ static int arm920t_write_phys_memory(struct target *target,
 }
 
 /** Writes a buffer, in the specified word size, with current MMU settings. */
-int arm920t_write_memory(struct target *target, uint32_t address,
+int arm920t_write_memory(struct target *target, target_addr_t address,
 	uint32_t size, uint32_t count, const uint8_t *buffer)
 {
 	int retval;
@@ -753,8 +751,8 @@ int arm920t_soft_reset_halt(struct target *target)
 	if (retval != ERROR_OK)
 		return retval;
 
-	long long then = timeval_ms();
-	int timeout;
+	int64_t then = timeval_ms();
+	bool timeout;
 	while (!(timeout = ((timeval_ms()-then) > 1000))) {
 		if (buf_get_u32(dbg_stat->value, EICE_DBG_STATUS_DBGACK, 1) == 0) {
 			embeddedice_read_reg(dbg_stat);
@@ -783,12 +781,12 @@ int arm920t_soft_reset_halt(struct target *target)
 	cpsr &= ~0xff;
 	cpsr |= 0xd3;
 	arm_set_cpsr(arm, cpsr);
-	arm->cpsr->dirty = 1;
+	arm->cpsr->dirty = true;
 
 	/* start fetching from 0x0 */
 	buf_set_u32(arm->pc->value, 0, 32, 0x0);
-	arm->pc->dirty = 1;
-	arm->pc->valid = 1;
+	arm->pc->dirty = true;
+	arm->pc->valid = true;
 
 	arm920t_disable_mmu_caches(target, 1, 1, 1);
 	arm920t->armv4_5_mmu.mmu_enabled = 0;
@@ -1695,6 +1693,7 @@ struct target_type arm920t_target = {
 	.deassert_reset = arm7_9_deassert_reset,
 	.soft_reset_halt = arm920t_soft_reset_halt,
 
+	.get_gdb_arch = arm_get_gdb_arch,
 	.get_gdb_reg_list = arm_get_gdb_reg_list,
 
 	.read_memory = arm920t_read_memory,

@@ -16,9 +16,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -58,7 +56,7 @@ static int arm720t_scan_cp15(struct target *target,
 	retval = arm_jtag_scann(jtag_info, 0xf, TAP_DRPAUSE);
 	if (retval != ERROR_OK)
 		return retval;
-	retval = arm_jtag_set_instr(jtag_info, jtag_info->intest_instr, NULL, TAP_DRPAUSE);
+	retval = arm_jtag_set_instr(jtag_info->tap, jtag_info->intest_instr, NULL, TAP_DRPAUSE);
 	if (retval != ERROR_OK)
 		return retval;
 
@@ -273,7 +271,7 @@ static int arm720_mmu(struct target *target, int *enabled)
 }
 
 static int arm720_virt2phys(struct target *target,
-		uint32_t virtual, uint32_t *physical)
+		target_addr_t virtual, target_addr_t *physical)
 {
 	uint32_t cb;
 	struct arm720t_common *arm720t = target_to_arm720(target);
@@ -288,7 +286,7 @@ static int arm720_virt2phys(struct target *target,
 }
 
 static int arm720t_read_memory(struct target *target,
-		uint32_t address, uint32_t size, uint32_t count, uint8_t *buffer)
+		target_addr_t address, uint32_t size, uint32_t count, uint8_t *buffer)
 {
 	int retval;
 	struct arm720t_common *arm720t = target_to_arm720(target);
@@ -311,7 +309,7 @@ static int arm720t_read_memory(struct target *target,
 }
 
 static int arm720t_read_phys_memory(struct target *target,
-		uint32_t address, uint32_t size, uint32_t count, uint8_t *buffer)
+		target_addr_t address, uint32_t size, uint32_t count, uint8_t *buffer)
 {
 	struct arm720t_common *arm720t = target_to_arm720(target);
 
@@ -319,7 +317,7 @@ static int arm720t_read_phys_memory(struct target *target,
 }
 
 static int arm720t_write_phys_memory(struct target *target,
-		uint32_t address, uint32_t size, uint32_t count, const uint8_t *buffer)
+		target_addr_t address, uint32_t size, uint32_t count, const uint8_t *buffer)
 {
 	struct arm720t_common *arm720t = target_to_arm720(target);
 
@@ -338,7 +336,7 @@ static int arm720t_soft_reset_halt(struct target *target)
 	if (retval != ERROR_OK)
 		return retval;
 
-	long long then = timeval_ms();
+	int64_t then = timeval_ms();
 	int timeout;
 	while (!(timeout = ((timeval_ms()-then) > 1000))) {
 		if (buf_get_u32(dbg_stat->value, EICE_DBG_STATUS_DBGACK, 1) == 0) {
@@ -367,12 +365,12 @@ static int arm720t_soft_reset_halt(struct target *target)
 	cpsr &= ~0xff;
 	cpsr |= 0xd3;
 	arm_set_cpsr(arm, cpsr);
-	arm->cpsr->dirty = 1;
+	arm->cpsr->dirty = true;
 
 	/* start fetching from 0x0 */
 	buf_set_u32(arm->pc->value, 0, 32, 0x0);
-	arm->pc->dirty = 1;
-	arm->pc->valid = 1;
+	arm->pc->dirty = true;
+	arm->pc->valid = true;
 
 	retval = arm720t_disable_mmu_caches(target, 1, 1, 1);
 	if (retval != ERROR_OK)
@@ -562,6 +560,7 @@ struct target_type arm720t_target = {
 	.deassert_reset = arm7_9_deassert_reset,
 	.soft_reset_halt = arm720t_soft_reset_halt,
 
+	.get_gdb_arch = arm_get_gdb_arch,
 	.get_gdb_reg_list = arm_get_gdb_reg_list,
 
 	.read_memory = arm720t_read_memory,
